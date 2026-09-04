@@ -1526,7 +1526,7 @@ function renderWeekView() {
         <div class="week-col-header">
           <div class="week-day-name ${isSun ? 'sun' : isSat ? 'sat' : ''}">${dayNames[i]}</div>
           <div class="week-day-number ${isToday ? 'today-badge' : ''}">${d.getDate()}</div>
-          ${holiday ? `<div style="font-size:11px; font-weight:700; color:var(--danger-color); margin-top:2px;">${holiday}</div>` : ''}
+          <div class="week-holiday-wrap">${holiday ? `<span class="week-holiday-name">${holiday}</span>` : ''}</div>
         </div>
         <div class="week-col-events">
     `;

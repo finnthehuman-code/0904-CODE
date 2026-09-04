@@ -1485,6 +1485,22 @@ input:checked + .toggle-slider:before { transform: translateX(22px); content: "ð
   color: #ffffff !important;
   margin: 2px auto 0;
 }
+.week-holiday-wrap {
+  height: 16px;
+  line-height: 16px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.week-holiday-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--danger-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .week-col-events {
   display: flex;
   flex-direction: column;
