@@ -1308,6 +1308,7 @@ function renderCalendar() {
   for (let i = firstDay - 1; i >= 0; i--) { createCell(container, prevLastDate - i, true, month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1); }
   for (let d = 1; d <= lastDate; d++) { createCell(container, d, false, year, month); }
   renderDailyAgenda(selectedDate);
+  renderMiniCal();
 }
 
 function matchesFilter(evt) {
@@ -1519,7 +1520,7 @@ function renderWeekView() {
     
     const dayEvts = events.filter(e => dateStr >= e.startDate && dateStr <= e.endDate && matchesFilter(e));
     
-    const isSelected = dateStr === selectedDate;
+    const isSelected = (dateStr === selectedDate) && !isToday;
     let colHtml = `
       <div class="week-col ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" onclick="selectedDate='${dateStr}'; renderWeekView();">
         <div class="week-col-header">
@@ -1550,7 +1551,7 @@ function renderWeekView() {
 }
 
 // ==========================================
-// 🗓️ Mini Calendar (Week View Side Panel)
+// 🗓️ Mini Calendar (Right Sidebar Panel)
 // ==========================================
 let miniCalDate = new Date(currentDate);
 
@@ -1558,9 +1559,6 @@ function renderMiniCal() {
   const grid = document.getElementById('mini-cal-grid');
   const title = document.getElementById('mini-cal-title');
   if (!grid || !title) return;
-
-  // sync miniCalDate with currentDate's month when renderWeekView is called
-  miniCalDate = new Date(currentDate);
 
   const year = miniCalDate.getFullYear();
   const month = miniCalDate.getMonth();
@@ -1583,6 +1581,21 @@ function renderMiniCal() {
     }
   });
 
+  const onDayClick = (y, m, d, ds) => {
+    selectedDate = ds;
+    currentDate = new Date(y, m, d);
+    miniCalDate = new Date(y, m, d);
+    if (currentViewMode === 'week') {
+      renderWeekView();
+    } else if (currentViewMode === 'list') {
+      renderListView();
+      renderDailyAgenda(selectedDate);
+      renderMiniCal();
+    } else {
+      renderCalendar();
+    }
+  };
+
   // Previous month filler
   for (let i = firstDay - 1; i >= 0; i--) {
     const d = prevLastDate - i;
@@ -1592,7 +1605,7 @@ function renderMiniCal() {
     const cell = document.createElement('div');
     cell.className = 'mini-cal-day other-month';
     cell.textContent = d;
-    cell.onclick = () => { selectedDate = ds; currentDate = new Date(y, m, d); renderWeekView(); };
+    cell.onclick = () => onDayClick(y, m, d, ds);
     grid.appendChild(cell);
   }
 
@@ -1612,7 +1625,7 @@ function renderMiniCal() {
     if (hasEvt) cls += ' has-event';
     cell.className = cls;
     cell.textContent = d;
-    cell.onclick = () => { selectedDate = ds; currentDate = new Date(year, month, d); renderWeekView(); };
+    cell.onclick = () => onDayClick(year, month, d, ds);
     grid.appendChild(cell);
   }
 
@@ -1626,20 +1639,18 @@ function renderMiniCal() {
     const cell = document.createElement('div');
     cell.className = 'mini-cal-day other-month';
     cell.textContent = d;
-    cell.onclick = () => { selectedDate = ds; currentDate = new Date(y, m, d); renderWeekView(); };
+    cell.onclick = () => onDayClick(y, m, d, ds);
     grid.appendChild(cell);
   }
 }
 
 window.miniCalPrev = function() {
   miniCalDate.setMonth(miniCalDate.getMonth() - 1);
-  currentDate = new Date(miniCalDate);
-  renderWeekView();
+  renderMiniCal();
 };
 window.miniCalNext = function() {
   miniCalDate.setMonth(miniCalDate.getMonth() + 1);
-  currentDate = new Date(miniCalDate);
-  renderWeekView();
+  renderMiniCal();
 };
 
 function renderListView() {
