@@ -775,6 +775,132 @@ const KMA_AUTH_KEY = "2WHPjj_CTyOhz44_wl8j4A";
 let weatherForecastMap = {}; 
 let chartInstance = null;
 
+// WMO Weather Code -> emoji/description mapping (comprehensive)
+function wmoWeather(code) {
+  if (code === 0) return { emoji: '☀️', desc: '맑음' };
+  if (code === 1) return { emoji: '🌤️', desc: '대체로 맑음' };
+  if (code === 2) return { emoji: '⛅', desc: '구름 조금' };
+  if (code === 3) return { emoji: '☁️', desc: '흐림' };
+  if (code <= 49) return { emoji: '🌫️', desc: '안개' };
+  if (code <= 59) return { emoji: '🌦️', desc: '이슬비' };
+  if (code <= 67) return { emoji: '🌧️', desc: '비' };
+  if (code <= 77) return { emoji: '❄️', desc: '눈' };
+  if (code <= 82) return { emoji: '🌦️', desc: '소나기' };
+  if (code <= 86) return { emoji: '🌨️', desc: '눈 소나기' };
+  if (code <= 99) return { emoji: '⛈️', desc: '뇌우' };
+  return { emoji: '🌤️', desc: '맑음' };
+}
+
+// UV Index label
+function uvLabel(uv) {
+  if (uv == null) return '';
+  if (uv <= 2) return '낮음';
+  if (uv <= 5) return '보통';
+  if (uv <= 7) return '높음';
+  if (uv <= 10) return '매우높음';
+  return '위험';
+}
+
+async function fetchLocationName(lat, lon) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ko`);
+    if(res.ok) {
+      const data = await res.json();
+      const addr = data.address;
+      return addr.city || addr.town || addr.borough || addr.district || addr.county || addr.state || '대한민국';
+    }
+  } catch(e) {}
+  return '대한민국';
+}
+
+async function fetchWeather(lat, lon) {
+  const loading = document.getElementById('weather-loader');
+  const content = document.getElementById('weather-content');
+  loading.classList.remove('hidden');
+  content.classList.add('hidden');
+
+  const locName = await fetchLocationName(lat, lon);
+  document.getElementById('weather-location').innerText = `📍 ${locName}`;
+
+  try {
+    // Open-Meteo: current + hourly (24h) + daily (7d) with all useful fields
+    const url = [
+      `https://api.open-meteo.com/v1/forecast`,
+      `?latitude=${lat}&longitude=${lon}`,
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,precipitation`,
+      `&hourly=temperature_2m,apparent_temperature,weather_code,precipitation_probability`,
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,wind_speed_10m_max,sunrise,sunset`,
+      `&timezone=Asia%2FSeoul&forecast_days=7`
+    ].join('');
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Open-Meteo fetch failed');
+    const data = await res.json();
+
+    const cur = data.current;
+    const curW = wmoWeather(cur.weather_code);
+
+    // Current weather
+    document.getElementById('weather-emoji').innerText = curW.emoji;
+    document.getElementById('weather-temp').innerText = `${Math.round(cur.temperature_2m)}°`;
+    document.getElementById('weather-desc').innerText = curW.desc;
+
+    // Today's max/min + feels like + humidity
+    const todayMax = Math.round(data.daily.temperature_2m_max[0]);
+    const todayMin = Math.round(data.daily.temperature_2m_min[0]);
+    const feelsLike = Math.round(cur.apparent_temperature);
+    const humidity = Math.round(cur.relative_humidity_2m);
+    const windSpeed = Math.round(cur.wind_speed_10m);
+    document.getElementById('weather-minmax').innerText =
+      `↑ ${todayMax}° / ↓ ${todayMin}°  체감 ${feelsLike}°  💧 ${humidity}%  💨 ${windSpeed}㎞/h`;
+
+    // Hourly chart: next 12 hours from now
+    const nowHourIndex = data.hourly.time.findIndex(t => {
+      const h = new Date(t).getHours();
+      return h === new Date().getHours();
+    });
+    const startIdx = Math.max(nowHourIndex, 0);
+    const next12Temps = data.hourly.temperature_2m.slice(startIdx, startIdx + 12).map(t => Math.round(t));
+    const next12Pop = data.hourly.precipitation_probability.slice(startIdx, startIdx + 12);
+    const next12Labels = data.hourly.time.slice(startIdx, startIdx + 12).map(t => `${new Date(t).getHours()}시`);
+    drawWeatherChart(next12Labels, next12Temps, next12Pop);
+
+    // 7-day daily forecast
+    const list = document.getElementById('weekly-forecast-list');
+    list.innerHTML = '';
+    const daysArr = ['일', '월', '화', '수', '목', '금', '토'];
+    data.daily.time.forEach((dateStr, i) => {
+      const w = wmoWeather(data.daily.weather_code[i]);
+      const dayName = (dateStr === todayString) ? '오늘' : daysArr[new Date(dateStr).getDay()];
+      const pop = data.daily.precipitation_probability_max[i] || 0;
+      const uv = data.daily.uv_index_max ? Math.round(data.daily.uv_index_max[i]) : null;
+      const wind = data.daily.wind_speed_10m_max ? Math.round(data.daily.wind_speed_10m_max[i]) : null;
+      const max = Math.round(data.daily.temperature_2m_max[i]);
+      const min = Math.round(data.daily.temperature_2m_min[i]);
+      list.innerHTML += `
+        <div class="weekly-item" title="UV: ${uvLabel(uv)} / 최대풍속: ${wind ?? '-'}㎞/h">
+          <span class="weekly-day">${dayName}</span>
+          <span class="weekly-rain">${pop > 0 ? `💧 ${pop}%` : ''}</span>
+          <span class="weekly-icon">${w.emoji}</span>
+          <span class="weekly-temps">
+            <span class="temp-max">${max}°</span>
+            <span class="temp-min">${min}°</span>
+          </span>
+        </div>`;
+      weatherForecastMap[dateStr] = w.emoji;
+    });
+
+    renderCalendar();
+    loading.classList.add('hidden');
+    content.classList.remove('hidden');
+
+  } catch(err) {
+    // Fallback: KMA API via proxy
+    kmaFallback(lat, lon);
+  }
+}
+
+// ---- KMA Fallback (secondary) ----
 function dfs_xy_conv(v1, v2) {
   const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0, OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
   const DEGRAD = Math.PI / 180.0;
@@ -795,36 +921,16 @@ function dfs_xy_conv(v1, v2) {
 }
 
 function parseKmaWeather(sky, pty) {
-  if (pty === "1" || pty === "4") return { desc: "비", emoji: "🌧️" };
-  if (pty === "2") return { desc: "비/눈", emoji: "🌨️" };
-  if (pty === "3") return { desc: "눈", emoji: "❄️" };
-  if (sky === "1") return { desc: "맑음", emoji: "☀️" };
-  if (sky === "3") return { desc: "구름많음", emoji: "⛅" };
-  if (sky === "4") return { desc: "흐림", emoji: "☁️" };
-  return { desc: "맑음", emoji: "☀️" };
+  if (pty === '1' || pty === '4') return { desc: '비', emoji: '🌧️' };
+  if (pty === '2') return { desc: '비/눈', emoji: '🌨️' };
+  if (pty === '3') return { desc: '눈', emoji: '❄️' };
+  if (sky === '1') return { desc: '맑음', emoji: '☀️' };
+  if (sky === '3') return { desc: '구름많음', emoji: '⛅' };
+  if (sky === '4') return { desc: '흐림', emoji: '☁️' };
+  return { desc: '맑음', emoji: '☀️' };
 }
 
-async function fetchLocationName(lat, lon) {
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ko`);
-    if(res.ok) {
-      const data = await res.json();
-      const addr = data.address;
-      return addr.city || addr.town || addr.borough || addr.district || addr.county || addr.state || "대한민국";
-    }
-  } catch(e) {}
-  return "대한민국 기상청";
-}
-
-async function fetchWeather(lat, lon) {
-  const loading = document.getElementById('weather-loader');
-  const content = document.getElementById('weather-content');
-  loading.classList.remove('hidden');
-  content.classList.add('hidden');
-
-  const locName = await fetchLocationName(lat, lon);
-  document.getElementById('weather-location').innerText = `📍 ${locName}`;
-
+async function kmaFallback(lat, lon) {
   try {
     const { nx, ny } = dfs_xy_conv(lat, lon);
     const now = new Date();
@@ -835,12 +941,10 @@ async function fetchWeather(lat, lon) {
     let baseHour = baseTimes.filter(h => h <= checkHour).pop();
     let targetDate = kst;
     if (baseHour === undefined) { baseHour = 23; targetDate = new Date(kst.getTime() - (24 * 60 * 60 * 1000)); }
-
-    const base_date = targetDate.toISOString().slice(0, 10).replace(/-/g, "");
-    const base_time = String(baseHour).padStart(2, "0") + "00";
-    const targetKmaUrl = `https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst?pageNo=1&numOfRows=1000&dataType=JSON&base_date=${base_date}&base_time=${base_time}&nx=${nx}&ny=${ny}&authKey=${KMA_AUTH_KEY}`;
-    
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetKmaUrl + "&t=" + Date.now())}`;
+    const base_date = targetDate.toISOString().slice(0, 10).replace(/-/g, '');
+    const base_time = String(baseHour).padStart(2, '0') + '00';
+    const kmaUrl = `https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst?pageNo=1&numOfRows=1000&dataType=JSON&base_date=${base_date}&base_time=${base_time}&nx=${nx}&ny=${ny}&authKey=${KMA_AUTH_KEY}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(kmaUrl + '&t=' + Date.now())}`;
     const res = await fetch(proxyUrl);
     const data = await res.json();
     const items = data.response?.body?.items?.item || [];
@@ -852,17 +956,16 @@ async function fetchWeather(lat, lon) {
       if (!hourlyMap[dt]) hourlyMap[dt] = { date: item.fcstDate, time: item.fcstTime };
       hourlyMap[dt][item.category] = item.fcstValue;
       if (!dailyMap[item.fcstDate]) dailyMap[item.fcstDate] = { date: item.fcstDate, temps: [], pop: [] };
-      if (item.category === "TMP") dailyMap[item.fcstDate].temps.push(parseFloat(item.fcstValue));
-      if (item.category === "POP") dailyMap[item.fcstDate].pop.push(parseFloat(item.fcstValue));
-      if (item.category === "SKY") dailyMap[item.fcstDate].sky = item.fcstValue;
-      if (item.category === "PTY") dailyMap[item.fcstDate].pty = item.fcstValue;
+      if (item.category === 'TMP') dailyMap[item.fcstDate].temps.push(parseFloat(item.fcstValue));
+      if (item.category === 'POP') dailyMap[item.fcstDate].pop.push(parseFloat(item.fcstValue));
+      if (item.category === 'SKY') dailyMap[item.fcstDate].sky = item.fcstValue;
+      if (item.category === 'PTY') dailyMap[item.fcstDate].pty = item.fcstValue;
     });
 
-    const hourlyList = Object.values(hourlyMap).slice(0, 8).map(h => {
+    const hourlyList = Object.values(hourlyMap).slice(0, 12).map(h => {
       const w = parseKmaWeather(h.SKY, h.PTY);
       return { time: h.time, temp: Math.round(parseFloat(h.TMP || 0)), desc: w.desc, emoji: w.emoji };
     });
-
     const dailyList = Object.values(dailyMap).map(d => {
       const w = parseKmaWeather(d.sky, d.pty);
       return {
@@ -872,67 +975,63 @@ async function fetchWeather(lat, lon) {
       };
     });
 
-    renderKMAData({ current: hourlyList[0], hourly: hourlyList, daily: dailyList });
-  } catch (err) {
-    fallbackToOpenMeteo(lat, lon);
+    const cur = hourlyList[0];
+    document.getElementById('weather-emoji').innerText = cur.emoji;
+    document.getElementById('weather-temp').innerText = `${cur.temp}°`;
+    document.getElementById('weather-desc').innerText = cur.desc;
+    document.getElementById('weather-minmax').innerText = `↑ ${dailyList[0]?.max ?? cur.temp}° / ↓ ${dailyList[0]?.min ?? cur.temp}°`;
+
+    drawWeatherChart(hourlyList.map(h => `${parseInt(h.time.slice(0,2),10)}시`), hourlyList.map(h => h.temp), null);
+
+    const list = document.getElementById('weekly-forecast-list');
+    list.innerHTML = '';
+    const daysArr = ['일', '월', '화', '수', '목', '금', '토'];
+    dailyList.forEach(d => {
+      const dayName = (d.date === todayString) ? '오늘' : daysArr[new Date(d.date).getDay()];
+      list.innerHTML += `<div class="weekly-item"><span class="weekly-day">${dayName}</span><span class="weekly-rain">${d.pop > 0 ? `💧 ${d.pop}%` : ''}</span><span class="weekly-icon">${d.emoji}</span><span class="weekly-temps"><span class="temp-max">${d.max}°</span> <span class="temp-min">${d.min}°</span></span></div>`;
+      weatherForecastMap[d.date] = d.emoji;
+    });
+    renderCalendar();
+    document.getElementById('weather-loader').classList.add('hidden');
+    document.getElementById('weather-content').classList.remove('hidden');
+  } catch(e) {
+    document.getElementById('weather-loader').classList.add('hidden');
+    document.getElementById('weather-content').classList.remove('hidden');
+    document.getElementById('weather-emoji').innerText = '🌤️';
+    document.getElementById('weather-temp').innerText = '--°';
+    document.getElementById('weather-desc').innerText = '날씨 정보 없음';
   }
 }
 
-async function fallbackToOpenMeteo(lat, lon) {
-  try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul`;
-    const res = await fetch(url);
-    const data = await res.json();
-    
-    document.getElementById('weather-temp').innerText = `${Math.round(data.current.temperature_2m)}°`;
-    document.getElementById('weather-desc').innerText = "실시간 예보";
-    document.getElementById('weather-emoji').innerText = "⛅";
-    document.getElementById('weather-minmax').innerText = `↑ ${Math.round(data.daily.temperature_2m_max[0])}° / ↓ ${Math.round(data.daily.temperature_2m_min[0])}°`;
-
-    const next8 = data.hourly.temperature_2m.slice(0, 8).map(t => Math.round(t));
-    const labels = [0,1,2,3,4,5,6,7].map(i => `${(new Date().getHours() + i) % 24}시`);
-    drawWeatherChart(labels, next8);
-    document.getElementById('weather-loader').classList.add('hidden');
-    document.getElementById('weather-content').classList.remove('hidden');
-  } catch(e) {}
-}
-
-function renderKMAData(data) {
-  const { current, hourly, daily } = data;
-  document.getElementById('weather-emoji').innerText = current.emoji;
-  document.getElementById('weather-temp').innerText = `${current.temp}°`;
-  document.getElementById('weather-desc').innerText = current.desc;
-  document.getElementById('weather-minmax').innerText = `↑ ${daily[0]?.max ?? current.temp}° / ↓ ${daily[0]?.min ?? current.temp}°`;
-
-  drawWeatherChart(hourly.map(h => `${parseInt(h.time.slice(0, 2), 10)}시`), hourly.map(h => h.temp));
-  
-  const list = document.getElementById('weekly-forecast-list');
-  list.innerHTML = '';
-  const daysArr = ['일', '월', '화', '수', '목', '금', '토'];
-  daily.forEach(d => {
-    const dayName = (d.date === todayString) ? '오늘' : daysArr[new Date(d.date).getDay()];
-    list.innerHTML += `<div class="weekly-item"><span class="weekly-day">${dayName}</span><span class="weekly-rain">${d.pop > 0 ? `💧 ${d.pop}%` : ''}</span><span class="weekly-icon">${d.emoji}</span><span class="weekly-temps"><span class="temp-max">${d.max}°</span> <span class="temp-min">${d.min}°</span></span></div>`;
-  });
-
-  weatherForecastMap = {};
-  daily.forEach(d => { weatherForecastMap[d.date] = d.emoji; });
-  renderCalendar();
-
-  document.getElementById('weather-loader').classList.add('hidden');
-  document.getElementById('weather-content').classList.remove('hidden');
-}
-
-function drawWeatherChart(labels, temps) {
+function drawWeatherChart(labels, temps, popArr) {
   const ctx = document.getElementById('weatherChart').getContext('2d');
   if (chartInstance) chartInstance.destroy();
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const lineColor = isDark ? '#60a5fa' : '#ffffff';
   const bgColor = isDark ? 'rgba(96,165,250,0.2)' : 'rgba(255,255,255,0.2)';
 
+  const datasets = [
+    { data: temps, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 2, pointBackgroundColor: '#fff', pointRadius: 3, tension: 0.4, fill: true, yAxisID: 'y' }
+  ];
+  if (popArr && popArr.some(v => v > 0)) {
+    datasets.push({
+      data: popArr, borderColor: 'rgba(147,197,253,0.7)', backgroundColor: 'rgba(147,197,253,0.15)',
+      borderWidth: 1.5, pointRadius: 0, tension: 0.4, fill: true, yAxisID: 'y2', borderDash: [3,3]
+    });
+  }
+
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { labels: labels, datasets: [{ data: temps, borderColor: lineColor, backgroundColor: bgColor, borderWidth: 2, pointBackgroundColor: '#fff', pointRadius: 3, tension: 0.4, fill: true }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { grid: { display: false }, ticks: { color: '#fff', font: { size: 10 } } }, y: { display: false } } }
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: isDark ? '#93c5fd' : '#fff', font: { size: 10 } } },
+        y: { display: false },
+        y2: { display: false, min: 0, max: 100 }
+      }
+    }
   });
 }
 
@@ -940,10 +1039,10 @@ function initWeather() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
         pos => fetchWeather(pos.coords.latitude, pos.coords.longitude), 
-        () => fetchWeather(37.4822, 126.9406), 
+        () => fetchWeather(37.5665, 126.9780),  // 서울 시청 기본값
         { timeout: 5000 }
     );
-  } else { fetchWeather(37.4822, 126.9406); }
+  } else { fetchWeather(37.5665, 126.9780); }
 }
 document.getElementById('refresh-weather-btn').addEventListener('click', initWeather);
 
@@ -1420,8 +1519,9 @@ function renderWeekView() {
     
     const dayEvts = events.filter(e => dateStr >= e.startDate && dateStr <= e.endDate && matchesFilter(e));
     
+    const isSelected = dateStr === selectedDate;
     let colHtml = `
-      <div class="week-col ${isToday ? 'today' : ''}" onclick="selectedDate='${dateStr}'; renderDailyAgenda('${dateStr}');">
+      <div class="week-col ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" onclick="selectedDate='${dateStr}'; renderWeekView();">
         <div class="week-col-header">
           <div class="week-day-name ${isSun ? 'sun' : isSat ? 'sat' : ''}">${dayNames[i]}</div>
           <div class="week-day-number ${isToday ? 'today-badge' : ''}">${d.getDate()}</div>
@@ -1446,7 +1546,101 @@ function renderWeekView() {
   }
   
   renderDailyAgenda(selectedDate);
+  renderMiniCal();
 }
+
+// ==========================================
+// 🗓️ Mini Calendar (Week View Side Panel)
+// ==========================================
+let miniCalDate = new Date(currentDate);
+
+function renderMiniCal() {
+  const grid = document.getElementById('mini-cal-grid');
+  const title = document.getElementById('mini-cal-title');
+  if (!grid || !title) return;
+
+  // sync miniCalDate with currentDate's month when renderWeekView is called
+  miniCalDate = new Date(currentDate);
+
+  const year = miniCalDate.getFullYear();
+  const month = miniCalDate.getMonth();
+  title.innerText = `${year}년 ${month + 1}월`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const lastDate = new Date(year, month + 1, 0).getDate();
+  const prevLastDate = new Date(year, month, 0).getDate();
+
+  grid.innerHTML = '';
+
+  // Dates with events (for dot indicator)
+  const eventDates = new Set();
+  events.forEach(evt => {
+    let d = new Date(evt.startDate);
+    const end = new Date(evt.endDate);
+    while (d <= end) {
+      eventDates.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+
+  // Previous month filler
+  for (let i = firstDay - 1; i >= 0; i--) {
+    const d = prevLastDate - i;
+    const m = month === 0 ? 11 : month - 1;
+    const y = month === 0 ? year - 1 : year;
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cell = document.createElement('div');
+    cell.className = 'mini-cal-day other-month';
+    cell.textContent = d;
+    cell.onclick = () => { selectedDate = ds; currentDate = new Date(y, m, d); renderWeekView(); };
+    grid.appendChild(cell);
+  }
+
+  // Current month days
+  for (let d = 1; d <= lastDate; d++) {
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = new Date(year, month, d).getDay();
+    const isToday = ds === todayString;
+    const isSel = ds === selectedDate;
+    const hasEvt = eventDates.has(ds);
+    const cell = document.createElement('div');
+    let cls = 'mini-cal-day';
+    if (dow === 0) cls += ' sun';
+    if (dow === 6) cls += ' sat';
+    if (isToday) cls += ' today';
+    if (isSel && !isToday) cls += ' selected';
+    if (hasEvt) cls += ' has-event';
+    cell.className = cls;
+    cell.textContent = d;
+    cell.onclick = () => { selectedDate = ds; currentDate = new Date(year, month, d); renderWeekView(); };
+    grid.appendChild(cell);
+  }
+
+  // Next month filler
+  const totalCells = grid.children.length;
+  const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (let d = 1; d <= remaining; d++) {
+    const m = month === 11 ? 0 : month + 1;
+    const y = month === 11 ? year + 1 : year;
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cell = document.createElement('div');
+    cell.className = 'mini-cal-day other-month';
+    cell.textContent = d;
+    cell.onclick = () => { selectedDate = ds; currentDate = new Date(y, m, d); renderWeekView(); };
+    grid.appendChild(cell);
+  }
+}
+
+window.miniCalPrev = function() {
+  miniCalDate.setMonth(miniCalDate.getMonth() - 1);
+  currentDate = new Date(miniCalDate);
+  renderWeekView();
+};
+window.miniCalNext = function() {
+  miniCalDate.setMonth(miniCalDate.getMonth() + 1);
+  currentDate = new Date(miniCalDate);
+  renderWeekView();
+};
 
 function renderListView() {
   const container = document.getElementById('list-view-container');

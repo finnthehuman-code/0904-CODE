@@ -93,7 +93,20 @@
       </div>
 
       <div id="calendar-view-week" class="hidden">
-        <div id="week-view-container" class="week-view-container"></div>
+        <div class="week-view-wrapper">
+          <div id="week-view-container" class="week-view-container"></div>
+          <div id="mini-cal-panel" class="mini-cal-panel">
+            <div class="mini-cal-header">
+              <button class="mini-cal-nav" onclick="miniCalPrev()">&#8249;</button>
+              <span id="mini-cal-title"></span>
+              <button class="mini-cal-nav" onclick="miniCalNext()">&#8250;</button>
+            </div>
+            <div class="mini-cal-weekdays">
+              <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+            </div>
+            <div id="mini-cal-grid" class="mini-cal-grid"></div>
+          </div>
+        </div>
       </div>
 
       <div id="calendar-view-list" class="hidden">
