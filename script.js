@@ -1321,8 +1321,9 @@ function createCell(container, dayNum, isOther, year, month) {
     const isSelected = selectedEventIds.has(evt.id);
     const selClass = isSelected ? 'selected-multi' : '';
 
-    // media_1788501133981.png 원본 형태: 반투명 배경 + 셀 간격 연결 + 경계선 파란 라인
-    const dynamicStyle = `background: ${catColor}20; color: ${catColor}; border-left: 3px solid ${catColor};`;
+    // 간격(이어진 날)에만 세로 구분 바 생성, 맨 앞(시작일)에는 파란 바 제거
+    const borderLeftStyle = !isStart ? `border-left: 3px solid ${catColor};` : 'border-left: none;';
+    const dynamicStyle = `background: ${catColor}20; color: ${catColor}; ${borderLeftStyle}`;
 
     let tag = `<div class="event-tag ${leftRad} ${rightRad} ${selClass}" style="${dynamicStyle}" draggable="true" ondragstart="window.dragEventStart(event, ${evt.id})" onclick="window.onEventTagClick(event, ${evt.id})" onmouseenter="window.setHoveredEvent(${evt.id})" onmouseleave="window.clearHoveredEvent(${evt.id})" oncontextmenu="window.showContextMenu(event, ${evt.id})">`;
     
