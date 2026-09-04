@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📅 캘린더</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <main class="card calendar-card">
+      <header class="calendar-header">
+        <div class="header-left">
+          <div class="brand-title">
+            <span class="brand-icon">📅</span>
+            <span id="current-year" class="year-label" title="연도 변경하기"></span>
+          </div>
+          <div class="nav-group">
+            <button id="prev-btn" class="nav-arrow-btn" title="이전달">&#8249;</button>
+            <button id="month-display-btn" class="month-label-btn" title="월 변경하기"></button>
+            <button id="next-btn" class="nav-arrow-btn" title="다음달">&#8250;</button>
+          </div>
+          <button id="today-btn" class="today-chip-btn" title="오늘 날짜로 이동">오늘</button>
+          <div class="view-mode-switcher">
+            <button class="view-mode-btn active" data-view="month" onclick="setViewMode('month')">월</button>
+            <button class="view-mode-btn" data-view="week" onclick="setViewMode('week')">주</button>
+            <button class="view-mode-btn" data-view="list" onclick="setViewMode('list')">목록</button>
+          </div>
+        </div>
+        <div class="header-center">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="calendar-search-input" placeholder="일정, 할 일, 장소, 메모 검색 (단축키: /)" onfocus="openSearchPanel()" oninput="onSearchInput(this.value)" autocomplete="off">
+            <button class="search-clear-btn hidden" id="search-clear-btn" onclick="clearSearch()" title="검색 지우기">✕</button>
+          </div>
+          <!-- 🔍 Real-time Search Dropdown Panel -->
+          <div id="search-results-panel" class="search-results-panel hidden">
+            <div class="search-panel-header">
+              <div class="search-filter-tabs">
+                <button class="search-tab-btn active" data-tab="all" onclick="setSearchFilterTab('all')">전체 <span id="search-count-all" class="search-badge">0</span></button>
+                <button class="search-tab-btn" data-tab="events" onclick="setSearchFilterTab('events')">📅 일정 <span id="search-count-events" class="search-badge">0</span></button>
+                <button class="search-tab-btn" data-tab="todos" onclick="setSearchFilterTab('todos')">✅ 할 일 <span id="search-count-todos" class="search-badge">0</span></button>
+              </div>
+              <button class="search-close-panel-btn" onclick="closeSearchPanel()" title="닫기 (Esc)">✕</button>
+            </div>
+            <div id="search-suggestions-container" class="search-suggestions-container">
+              <div class="search-suggestions-title">⚡ 빠른 필터 검색</div>
+              <div class="search-quick-chips">
+                <button class="search-quick-chip" onclick="applyQuickSearch('오늘')">📅 오늘</button>
+                <button class="search-quick-chip" onclick="applyQuickSearch('이번달')">🗓️ 이번 달</button>
+                <button class="search-quick-chip" onclick="applyQuickSearch('#미완료')">⏳ 미완료 할 일</button>
+              </div>
+            </div>
+            <div id="search-results-list" class="search-results-list"></div>
+            <div class="search-panel-footer">
+              <span>💡 검색 결과 클릭 시 해당 위치로 즉시 이동합니다</span>
+              <kbd class="search-kbd">ESC</kbd>
+            </div>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="sync-status-chip" title="실시간 공유 연결됨">
+            <span class="pulse-dot"></span>
+            <span class="sync-text">실시간</span>
+            <input type="text" id="room-code-input" value="shared-room" title="방 코드 변경시 이 값을 똑같이 맞추세요" class="room-code-mini-input">
+          </div>
+          <button class="icon-tool-btn" onclick="copyShareLink()" title="초대 링크 복사"><span>🔗</span></button>
+          <button class="icon-tool-btn" onclick="openTrashModal()" title="휴지통 복구"><span>🗑️</span></button>
+          <label class="theme-toggle" title="다크 모드 전환">
+            <input type="checkbox" id="theme-toggle-checkbox">
+            <span class="toggle-slider"></span>
+          </label>
+          <button id="add-event-btn" class="primary-action-btn">+ 일정 추가</button>
+        </div>
+      </header>
+
+      <div id="dynamic-category-tabs" class="category-segmented-bar"></div>
+
+      <div id="search-results-panel" class="search-results-panel hidden">
+        <div class="search-results-header">
+          <span id="search-results-title">검색 결과</span>
+          <button onclick="clearSearch()" class="search-results-close">✕ 닫기</button>
+        </div>
+        <div id="search-results-list" class="search-results-list"></div>
+      </div>
+
+      <div id="calendar-view-month">
+        <div class="weekday-grid">
+          <div class="sun">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="sat">토</div>
+        </div>
+        <div id="calendar-days" class="calendar-grid"></div>
+      </div>
+
+      <div id="calendar-view-week" class="hidden">
+        <div id="week-view-container" class="week-view-container"></div>
+      </div>
+
+      <div id="calendar-view-list" class="hidden">
+        <div id="list-view-container" class="list-view-container"></div>
+      </div>
+      
+      <section id="daily-agenda" class="daily-agenda">
+        <div class="agenda-header">
+          <h3 id="agenda-date-title">선택된 날짜</h3>
+          <span id="agenda-count" class="agenda-count">0개의 일정</span>
+        </div>
+        <div id="agenda-list" class="agenda-list"></div>
+      </section>
+    </main>
+
+    <aside class="right-panel">
+      <div class="card mini-cal-card">
+        <div id="mini-calendar" class="mini-calendar"></div>
+      </div>
+
+      <div class="card todo-card" style="display: flex; flex-direction: column;">
+        <div class="todo-realtime-header">
+          <div id="live-date" class="live-date">--월 --일 (-)</div>
+          <div id="live-clock" class="live-clock"><span class="clock-ampm">--</span>--:--:--</div>
+        </div>
+        <div class="todo-header">
+          <h2>To-Do &amp; 메모</h2>
+          <span class="badge" id="todo-count">0개 남음</span>
+        </div>
+        <div class="todo-input-group">
+          <input type="text" id="todo-input" placeholder="새로운 할 일을 입력하세요...">
+          <button id="add-todo-btn" class="primary-btn">추가</button>
+        </div>
+        <ul id="todo-list" class="todo-list"></ul>
+      </div>
+
+      <div class="card weather-card" id="weather-widget">
+        <div class="weather-loader" id="weather-loader">
+          <div class="loader-spinner"></div>
+          <span style="margin-top:12px;" id="weather-status-text">기상청 데이터 연결 중...</span>
+        </div>
+        <div class="weather-content hidden" id="weather-content">
+          <div class="weather-header">
+            <div id="weather-location" class="weather-location">📍 대한민국 기상청</div>
+            <button id="refresh-weather-btn" class="icon-btn" style="color: rgba(255,255,255,0.8);">🔄</button>
+          </div>
+          <div class="weather-main-wrap">
+            <div class="weather-temp-box">
+              <span id="weather-emoji" class="weather-emoji" style="font-size: 42px;">⛅</span>
+              <div id="weather-temp" class="weather-temp">--°</div>
+            </div>
+            <div class="weather-desc-box">
+              <div id="weather-desc" class="weather-desc">--</div>
+              <div id="weather-minmax" class="weather-minmax">↑ --° / ↓ --°</div>
+            </div>
+          </div>
+          <div class="weather-chart-container">
+            <canvas id="weatherChart"></canvas>
+          </div>
+          <div class="weekly-forecast-list" id="weekly-forecast-list"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="datepicker-modal" class="modal hidden">
+    <div class="modal-content card datepicker-content">
+      <h3 style="text-align:center; margin-bottom: 20px;">날짜 이동</h3>
+      <div class="picker-columns">
+        <div class="picker-col">
+          <div class="picker-label">연도</div>
+          <ul id="year-list" class="picker-list"></ul>
+        </div>
+        <div class="picker-col">
+          <div class="picker-label">월</div>
+          <ul id="month-list" class="picker-list"></ul>
+        </div>
+      </div>
+      <div class="modal-actions" style="justify-content: center; margin-top: 20px;">
+        <button id="close-datepicker-btn" class="cancel-btn">취소</button>
+        <button id="confirm-datepicker-btn" class="primary-btn" style="width: 100px;">이동</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="event-modal" class="modal hidden">
+    <div class="modal-content card event-modal-card">
+      <h3 id="modal-title">새 일정 추가</h3>
+      <div class="input-group">
+        <label>일정 제목</label>
+        <input type="text" id="event-title" placeholder="일정의 제목을 입력하세요">
+      </div>
+      <div class="input-row">
+        <div class="input-group half">
+          <label>시작 날짜</label>
+          <input type="date" id="event-date">
+        </div>
+        <div class="input-group half">
+          <label>종료 날짜</label>
+          <input type="date" id="event-end-date">
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="input-group half">
+          <label>시작 시간 (선택)</label>
+          <input type="time" id="event-time">
+        </div>
+        <div class="input-group half">
+          <label>종료 시간 (선택)</label>
+          <input type="time" id="event-end-time">
+        </div>
+      </div>
+      <div class="input-group">
+        <label>장소 (선택)</label>
+        <input type="text" id="event-location" placeholder="장소를 입력하세요">
+      </div>
+      <div class="input-group">
+        <label>상세 메모</label>
+        <textarea id="event-memo" placeholder="일정에 대한 상세한 내용을 기록해보세요" rows="3"></textarea>
+      </div>
+      <div class="input-group">
+        <label>반복</label>
+        <select id="event-repeat" class="modal-select">
+          <option value="none">반복 없음</option>
+          <option value="daily">매일</option>
+          <option value="weekly">매주</option>
+          <option value="monthly">매월</option>
+          <option value="yearly">매년</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>분류</label>
+        <div id="dynamic-category-selector" class="category-selector"></div>
+      </div>
+      <div class="modal-actions" id="modal-action-buttons"></div>
+    </div>
+  </div>
+
+  <div id="context-menu" class="hidden">
+    <div class="context-menu-item" id="ctx-edit-btn">✏️ 일정 수정</div>
+    <div class="context-menu-item ctx-danger" id="ctx-delete-btn">🗑️ 삭제</div>
+  </div>
+
+  <div id="floating-batch-bar" class="hidden">
+    <span class="batch-count-badge" id="batch-count-display">0개 선택됨</span>
+    <button class="batch-btn danger" onclick="batchDeleteEvents()">🗑️ 일괄 삭제</button>
+    <div id="dynamic-batch-category-buttons" style="display:flex; gap:8px;"></div>
+    <button class="batch-btn" onclick="clearEventSelection()">✕ 해제</button>
+  </div>
+
+  <div id="toast-notification" class="hidden">
+    <span id="toast-message">실행 취소되었습니다 (Ctrl+Z)</span>
+  </div>
+
+  <div id="category-manager-modal" class="modal hidden">
+    <div class="modal-content card category-modal-card">
+      <div class="category-modal-header">
+        <h3 class="category-modal-title">🎨 카테고리 관리</h3>
+        <button class="category-modal-close-btn" onclick="document.getElementById('category-manager-modal').classList.add('hidden')" title="닫기">✕</button>
+      </div>
+      <p class="category-modal-desc">원하는 이름과 색상으로 카테고리를 추가하고 자유롭게 관리하세요.</p>
+      <div class="category-add-card">
+        <div class="category-input-row">
+          <input type="text" id="new-cat-name" class="category-text-input" placeholder="이름 (예: 운동, 공부, 독서)" autocomplete="off">
+          <div class="category-addon-wrap">
+            <input type="text" id="new-cat-icon" class="category-icon-input" placeholder="이모지" value="📌" title="이모지">
+            <label class="category-color-picker-label" title="색상 선택">
+              <input type="color" id="new-cat-color" value="#3182f6" class="category-color-input" oninput="document.getElementById('new-cat-color-preview').style.background = this.value">
+              <span id="new-cat-color-preview" class="category-color-preview-circle" style="background:#3182f6;"></span>
+            </label>
+          </div>
+        </div>
+        <button class="primary-btn category-add-submit-btn" onclick="addNewCategory()">+ 카테고리 추가</button>
+      </div>
+
+      <div class="category-recommend-section">
+        <span class="category-recommend-title">💡 추천 카테고리 (클릭하여 바로 등록)</span>
+        <div class="category-recommend-chips" id="category-recommend-chips"></div>
+      </div>
+
+      <div class="category-list-header">
+        <span class="category-list-title">등록된 카테고리</span>
+        <span class="category-count-chip" id="category-count-badge">0개</span>
+      </div>
+      <ul id="category-manager-list" class="category-manager-list"></ul>
+      <div class="modal-actions" style="margin-top: 18px;">
+        <button class="primary-btn" style="width:100%;" onclick="document.getElementById('category-manager-modal').classList.add('hidden')">완료</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="trash-modal" class="modal hidden">
+    <div class="modal-content card" style="max-width: 480px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3>🗑️ 휴지통</h3>
+        <button class="cancel-btn" style="padding:4px 10px; font-size:12px;" onclick="emptyTrashBin()">전체 비우기</button>
+      </div>
+      <ul id="trash-list" class="todo-list" style="max-height: 300px; overflow-y: auto;"></ul>
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button class="primary-btn" onclick="document.getElementById('trash-modal').classList.add('hidden')">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="script.js" defer></script>
+</body>
+</html>
